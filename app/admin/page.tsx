@@ -13,7 +13,6 @@ type UsuarioStats = {
   mejor_puntaje: number;
 };
 
-// Definimos el tipo para el detalle de la pregunta
 type DetallePregunta = {
   palabra: string;
   correcta: boolean;
@@ -24,7 +23,7 @@ type HistorialPartida = {
   id: number;
   score: number;
   completed_at: string;
-  details: DetallePregunta[] | null; // <--- Ahora traemos los detalles
+  details: DetallePregunta[] | null;
 };
 
 export default function AdminPage() {
@@ -56,7 +55,6 @@ export default function AdminPage() {
     else {
         // @ts-ignore
         const todos = data || [];
-        // FILTRO: Ocultar al Administrador de la lista
         const soloEstudiantes = todos.filter((u: UsuarioStats) => u.carnet !== 'admindeljuego');
         setUsuarios(soloEstudiantes);
     }
@@ -67,7 +65,6 @@ export default function AdminPage() {
     setUsuarioSeleccionado(usuario);
     setPartidaExpandida(null);
     
-    // Pedimos también la columna 'details'
     const { data } = await supabase
         .from('game_results')
         .select('id, score, completed_at, details') 
@@ -77,6 +74,24 @@ export default function AdminPage() {
     // @ts-ignore
     setHistorial(data || []);
     setModalHistorialAbierto(true);
+  };
+
+  // --- FUNCIÓN QUE FALTABA: VACIAR HISTORIAL ---
+  const vaciarHistorial = async (id: string, nombre: string) => {
+    const confirmacion = confirm(`¿Quieres BORRAR todas las partidas de "${nombre}"?\n\nEl usuario se mantendrá, pero sus intentos volverán a 0.`);
+    if (!confirmacion) return;
+
+    const { error } = await supabase
+        .from('game_results')
+        .delete()
+        .eq('user_id', id);
+
+    if (error) {
+        alert('Error al borrar historial: ' + error.message);
+    } else {
+        alert('✅ Historial vaciado.');
+        fetchUsuarios(); 
+    }
   };
 
   const eliminarUsuario = async (id: string, nombre: string) => {
@@ -98,19 +113,21 @@ export default function AdminPage() {
   if (loading) return <div className="p-10 text-center text-black font-bold">Cargando sistema...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8 font-sans text-black">
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-black">
       <div className="max-w-7xl mx-auto">
         
-        <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-lg shadow">
+        {/* CABECERA */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-lg shadow gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-blue-900">GESTIÓN DE ESTUDIANTES</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-blue-900">GESTIÓN DE ESTUDIANTES</h1>
             <p className="text-gray-500">Total registrados: {usuarios.length}</p>
           </div>
-          <button onClick={() => router.push('/')} className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded font-bold transition">
+          <button onClick={() => router.push('/')} className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded font-bold transition w-full md:w-auto">
             Salir
           </button>
         </div>
 
+        {/* BUSCADOR */}
         <div className="mb-6">
           <input 
             type="text" 
@@ -121,53 +138,59 @@ export default function AdminPage() {
           />
         </div>
 
+        {/* --- AQUÍ ESTÁ EL FIX PARA CELULARES --- */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full leading-normal">
-            <thead>
-              <tr className="bg-blue-900 text-white text-left">
-                <th className="px-5 py-4">Estudiante</th>
-                <th className="px-5 py-4">Carnet</th>
-                <th className="px-5 py-4">Semestre</th>
-                <th className="px-5 py-4 text-center">Intentos</th>
-                <th className="px-5 py-4 text-center">Mejor Nota</th>
-                <th className="px-5 py-4 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.length === 0 ? (
-                <tr><td colSpan={6} className="p-10 text-center text-gray-500">No hay estudiantes.</td></tr>
-              ) : (
-                filtrados.map((u) => (
-                  <tr key={u.user_id} className="hover:bg-blue-50 border-b transition">
-                    <td className="px-5 py-4 font-bold text-gray-800">{u.full_name}</td>
-                    <td className="px-5 py-4 text-gray-600">{u.carnet}</td>
-                    <td className="px-5 py-4 text-gray-600">{u.semestre}º</td>
-                    <td className="px-5 py-4 text-center">
-                        <span className="bg-blue-100 text-blue-800 py-1 px-3 rounded-full text-xs font-bold">{u.total_intentos}</span>
-                    </td>
-                    <td className={`px-5 py-4 text-center font-bold ${u.mejor_puntaje >= 51 ? 'text-green-600' : 'text-red-500'}`}>
-                        {u.mejor_puntaje}
-                    </td>
-                    <td className="px-5 py-4 flex justify-center gap-3">
-                      <button onClick={() => verHistorial(u)} title="Ver Historial" className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded shadow transition">👁️</button>
-                      <button onClick={() => eliminarUsuario(u.user_id, u.full_name)} title="Eliminar" className="bg-red-500 hover:bg-red-600 text-white p-2 rounded shadow transition">🗑️</button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto"> {/* <--- ESTE DIV PERMITE EL SCROLL */}
+            <table className="min-w-full leading-normal">
+              <thead>
+                <tr className="bg-blue-900 text-white text-left">
+                  {/* Agregamos whitespace-nowrap para que el texto no se rompa */}
+                  <th className="px-5 py-4 whitespace-nowrap">Estudiante</th>
+                  <th className="px-5 py-4 whitespace-nowrap">Carnet</th>
+                  <th className="px-5 py-4 whitespace-nowrap">Semestre</th>
+                  <th className="px-5 py-4 text-center whitespace-nowrap">Intentos</th>
+                  <th className="px-5 py-4 text-center whitespace-nowrap">Mejor Nota</th>
+                  <th className="px-5 py-4 text-center whitespace-nowrap">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.length === 0 ? (
+                  <tr><td colSpan={6} className="p-10 text-center text-gray-500">No hay estudiantes.</td></tr>
+                ) : (
+                  filtrados.map((u) => (
+                    <tr key={u.user_id} className="hover:bg-blue-50 border-b transition">
+                      <td className="px-5 py-4 font-bold text-gray-800 whitespace-nowrap">{u.full_name}</td>
+                      <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{u.carnet}</td>
+                      <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{u.semestre}º</td>
+                      <td className="px-5 py-4 text-center whitespace-nowrap">
+                          <span className="bg-blue-100 text-blue-800 py-1 px-3 rounded-full text-xs font-bold">{u.total_intentos}</span>
+                      </td>
+                      <td className={`px-5 py-4 text-center font-bold whitespace-nowrap ${u.mejor_puntaje >= 51 ? 'text-green-600' : 'text-red-500'}`}>
+                          {u.mejor_puntaje}
+                      </td>
+                      <td className="px-5 py-4 flex justify-center gap-2 whitespace-nowrap">
+                        <button onClick={() => verHistorial(u)} title="Ver Historial" className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded shadow transition">👁️</button>
+                        {/* Agregué de nuevo el botón de vaciar historial */}
+                        <button onClick={() => vaciarHistorial(u.user_id, u.full_name)} title="Resetear Intentos" className="bg-orange-500 hover:bg-orange-600 text-white p-2 rounded shadow transition">🧹</button>
+                        <button onClick={() => eliminarUsuario(u.user_id, u.full_name)} title="Eliminar" className="bg-red-500 hover:bg-red-600 text-white p-2 rounded shadow transition">🗑️</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
       {/* --- MODAL DE HISTORIAL DETALLADO --- */}
       {modalHistorialAbierto && usuarioSeleccionado && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
           <div className="bg-white p-0 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in-down h-[80vh] flex flex-col">
             
             <div className="bg-blue-900 p-4 text-white flex justify-between items-center shrink-0">
-                <h2 className="text-xl font-bold">Historial de {usuarioSeleccionado.full_name}</h2>
-                <button onClick={() => setModalHistorialAbierto(false)} className="text-white hover:text-gray-300 font-bold text-xl">✕</button>
+                <h2 className="text-xl font-bold truncate">Historial de {usuarioSeleccionado.full_name}</h2>
+                <button onClick={() => setModalHistorialAbierto(false)} className="text-white hover:text-gray-300 font-bold text-xl px-2">✕</button>
             </div>
 
             <div className="p-6 overflow-y-auto grow">
@@ -177,7 +200,6 @@ export default function AdminPage() {
                     <div className="space-y-4">
                         {historial.map((h) => (
                             <div key={h.id} className="border rounded-lg overflow-hidden shadow-sm">
-                                {/* Resumen de la partida */}
                                 <div 
                                     className="bg-gray-50 p-3 flex justify-between items-center cursor-pointer hover:bg-gray-100"
                                     onClick={() => setPartidaExpandida(partidaExpandida === h.id ? null : h.id)}
@@ -193,16 +215,15 @@ export default function AdminPage() {
                                     </div>
                                 </div>
 
-                                {/* Detalle desplegable */}
                                 {partidaExpandida === h.id && (
                                     <div className="bg-white p-3 border-t">
                                         {!h.details ? (
-                                            <p className="text-sm text-gray-400 italic">Detalle no disponible para esta partida antigua.</p>
+                                            <p className="text-sm text-gray-400 italic">Detalle no disponible.</p>
                                         ) : (
-                                            <div className="grid grid-cols-2 gap-2">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                 {h.details.map((d, idx) => (
                                                     <div key={idx} className={`text-sm p-2 rounded flex justify-between border ${d.correcta ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                                        <span className="font-bold text-gray-700">{d.palabra}</span>
+                                                        <span className="font-bold text-gray-700 truncate mr-2">{d.palabra}</span>
                                                         <span>{d.correcta ? '✅' : '❌'}</span>
                                                     </div>
                                                 ))}
@@ -217,7 +238,7 @@ export default function AdminPage() {
             </div>
 
             <div className="p-4 bg-gray-50 text-right shrink-0">
-                <button onClick={() => setModalHistorialAbierto(false)} className="px-5 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-bold shadow">
+                <button onClick={() => setModalHistorialAbierto(false)} className="px-5 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-bold shadow w-full sm:w-auto">
                     Cerrar
                 </button>
             </div>
